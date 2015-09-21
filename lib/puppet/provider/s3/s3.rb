@@ -26,6 +26,7 @@ Puppet::Type.type(:s3).provide(:s3) do
 
   def create
     Puppet.info('Connecting to AWS S3')   
+    # TODO set it up to work even if you don't provide access and secret keys (automatic credintial lookup on ec2 or ~/.aws/credentials ?
     s3 = Aws::S3::Client.new( 
         :access_key_id      => resource[:access_key_id], 
         :secret_access_key  => resource[:secret_access_key],
@@ -46,6 +47,9 @@ Puppet::Type.type(:s3).provide(:s3) do
         bucket:             bucket,
         key:                key,
     )
+
+    # Create a .etag file when we've downloaded an artifact
+    IO.write(resource[:path], resp.etag) #TODO any kind of exception handling required?
     
   end
 
@@ -55,26 +59,49 @@ Puppet::Type.type(:s3).provide(:s3) do
     
   end
 
+  # TODO Add condition where the ETag isn't cached, but the head_object has
+  #      an ETag that is an MD5 (aka, does not match /-\d$/
   def exists?
 
-      if File.exists?(resource[:path])  
+
+      # Create a new S3 client object
+      s3 = Aws::S3::Client.new( 
+          :access_key_id      => resource[:access_key_id], 
+          :secret_access_key  => resource[:secret_access_key],
+          :region             => resource[:region] || 'us-east-1',
+      )
+            
+      # Do all the same stuff I did for create
+      source_ary  = resource[:source].chomp.split('/')
+      source_ary.shift # Remove prefixed white space
+            
+      bucket      = source_ary.shift
+      key         = File.join(source_ary)
+
+      if File.exists?(resource[:path] + '.etag')  
+          # Read in the cached etag for the file 
+          cached_etag = IO.read(resource[:path] + '.etag')
+        
+          # Fetch the current metadata for the file
+          resp = s3.head_object(
+              bucket:             bucket,
+              key:                key,
+          )
+
+          fresh_etag = resp.etag
+
+          # Compare the current metadata's etag with the cached etag 
+          if cached_etag  == fresh_etag 
+              true
+          else
+              false
+          end
+      
+      # No etag cached file exists, redownload the file and compare MD5
+      elsif File.exists?(resource[:path])  
 
           # Setup a temp file to compare against
           temp_file = Tempfile.new(resource[:path])
-
-          # Create a new S3 client object
-          s3 = Aws::S3::Client.new( 
-                :access_key_id      => resource[:access_key_id], 
-                :secret_access_key  => resource[:secret_access_key],
-                :region             => resource[:region] || 'us-east-1',
-            )
-            
-            # Do all the same stuff I did for create
-            source_ary  = resource[:source].chomp.split('/')
-            source_ary.shift # Remove prefixed white space
-            
-            bucket      = source_ary.shift
-            key         = File.join(source_ary)
 
             Puppet.info('Setting new S3 object and downloading...')
 
