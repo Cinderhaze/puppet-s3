@@ -49,7 +49,7 @@ Puppet::Type.type(:s3).provide(:s3) do
     )
 
     # Create a .etag file when we've downloaded an artifact
-    IO.write(resource[:path], resp.etag) #TODO any kind of exception handling required?
+    IO.write(resource[:path]+'.etag', resp.etag) #TODO any kind of exception handling required?
     
   end
 
