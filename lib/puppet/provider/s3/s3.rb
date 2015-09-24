@@ -55,7 +55,8 @@ Puppet::Type.type(:s3).provide(:s3) do
 
   def destroy
 
-      # rm rf some file on the filesystem that points to resource[:path]
+      File.delete(resource[:path]+'.etag') if File.exists?(resource[:path]+'.etag')
+      File.delete(resource[:path]) if File.exists?(resource[:path])
     
   end
 
